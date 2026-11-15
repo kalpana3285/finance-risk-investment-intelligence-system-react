@@ -20,7 +20,7 @@ if (!VITE_AUTH0_DOMAIN || !VITE_AUTH0_CLIENT_ID || !VITE_AUTH0_API_AUDIENCE) {
     <main id="center">
         <h1>Connect your FRIIS workspace</h1>
       <p>
-        Create <code>frontend/.env.local</code> with
+        Create <code>.env.local</code> with
         <code> VITE_AUTH0_DOMAIN</code>, <code>VITE_AUTH0_CLIENT_ID</code>, and
         <code> VITE_AUTH0_API_AUDIENCE</code>, then restart the frontend server.
       </p>
@@ -36,7 +36,7 @@ if (!VITE_AUTH0_DOMAIN || !VITE_AUTH0_CLIENT_ID || !VITE_AUTH0_API_AUDIENCE) {
         domain={VITE_AUTH0_DOMAIN}
         clientId={VITE_AUTH0_CLIENT_ID}
         authorizationParams={{
-          redirect_uri: window.location.origin,
+          redirect_uri: `${window.location.origin}${import.meta.env.BASE_URL}`,
           audience: VITE_AUTH0_API_AUDIENCE,
         }}
       >

@@ -13,6 +13,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: github-pages
+    env:
+      VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+      VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+      VITE_AUTH0_API_AUDIENCE: ${{ vars.VITE_AUTH0_API_AUDIENCE }}
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,6 +26,19 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Validate frontend configuration
+        run: |
+          if [ -z "$VITE_AUTH0_DOMAIN" ] || [ -z "$VITE_AUTH0_CLIENT_ID" ] || [ -z "$VITE_AUTH0_API_AUDIENCE" ]; then
+            echo "::error::VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID, and VITE_AUTH0_API_AUDIENCE must be configured as github-pages environment variables."
+            exit 1
+          fi
+          if [ -n "$VITE_API_BASE_URL" ] && ! node --input-type=module -e '
+            const url = new URL(process.env.VITE_API_BASE_URL)
+            if (!["http:", "https:"].includes(url.protocol) || url.pathname !== "/" || url.search || url.hash) process.exit(1)
+          '; then
+            echo "::error::VITE_API_BASE_URL must be an API origin, such as https://api.example.com, without a path."
+            exit 1
+          fi
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
