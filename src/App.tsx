@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import ResearchResponse, { type Citation } from './ResearchResponse'
 import './App.css'
+import './WorkspaceTheme.css'
 
 type Portfolio = { portfolio_id: number; portfolio_name: string; portfolio_manager?: string | null; risk_category?: string | null; total_value?: number | string | null; benchmark_index?: string | null }
 type PortfolioDetail = Portfolio & { holdings: { holding_id: number; asset_name?: string | null; asset_type?: string | null; sector?: string | null; allocation_percentage?: number | string | null; market_value?: number | string | null; last_updated?: string | null }[]; risk_assessments: { risk_id: number; asset_name?: string | null; risk_type?: string | null; risk_score?: number | null; risk_level?: string | null; risk_description?: string | null; assessment_date?: string | null; escalation_flag: boolean }[] }
@@ -48,6 +49,7 @@ const reviewStatusCopy: Record<string, { label: string; style: string }> = {
 function App() {
   const { isLoading, isAuthenticated, error: authError, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0()
   const [view, setView] = useState<View>('overview')
+  const [navOpen, setNavOpen] = useState(false)
   const [portfolios, setPortfolios] = useState<Portfolio[]>([])
   const [selectedPortfolio, setSelectedPortfolio] = useState('')
   const [portfolioDetail, setPortfolioDetail] = useState<PortfolioDetail | null>(null)
@@ -123,7 +125,7 @@ function App() {
     if (view === 'escalations') loadEscalations().catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load escalations.'))
   }, [view, loadEscalations])
 
-  const selectView = (next: View) => { setView(next); setError(''); setNotice(''); if (next !== 'portfolios') setPortfolioDetail(null) }
+  const selectView = (next: View) => { setView(next); setNavOpen(false); setError(''); setNotice(''); if (next !== 'portfolios') setPortfolioDetail(null) }
 
   const pollQuery = async (queryId: string) => {
     for (let attempt = 0; attempt < 140; attempt += 1) {
@@ -187,9 +189,59 @@ function App() {
   const responseLimitations = Array.isArray(result?.limitations) ? result.limitations : []
   const escalationDataGaps = Array.isArray(result?.escalation_data_gaps) ? result.escalation_data_gaps : []
 
-  return <div className="app-shell"><aside className="sidebar"><a className="brand-lockup" href="#overview" onClick={() => selectView('overview')}><span className="brand-mark">F</span><span>FRIIS<span className="brand-sub">INTELLIGENCE</span></span></a><div className="workspace-label">WORKSPACE</div><nav className="nav-list" aria-label="Main navigation">{([['overview', '◫', 'Overview'], ['research', '⌕', 'Research'], ['portfolios', '▤', 'Portfolios'], ['escalations', '△', 'Escalations'], ['ingestion', '↑', 'Knowledge base']] as [View, string, string][]).map(([key, icon, label]) => <button key={key} className={`nav-item ${view === key ? 'active' : ''}`} onClick={() => selectView(key)}><span className="nav-icon">{icon}</span>{label}{key === 'escalations' && escalations.length > 0 && <span className="nav-count">{escalations.length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="status-card"><span className={`status-dot ${apiStatus}`}/><div><strong>Intelligence services</strong><small>{apiStatus === 'checking' ? 'Checking API…' : apiStatus === 'connected' ? 'API connected' : apiStatus === 'degraded' ? 'API limited · worker offline' : 'API unavailable'}</small></div></div><div className="data-note">◈ <span>Analysis is grounded in available evidence. Always apply professional judgment.</span></div></div></aside>
-    <main className="main-area"><header className="topbar"><div className="breadcrumbs">Workspace <span>/</span> <strong>{view === 'ingestion' ? 'Knowledge base' : titleCase(view)}</strong></div><div className="top-actions"><span className="environment-pill"><i/> SECURE WORKSPACE</span><div className="user-menu"><div className="avatar">{(user?.name ?? user?.email ?? 'A').slice(0, 1).toUpperCase()}</div><span className="user-name">{user?.name ?? user?.email ?? 'Analyst'}</span><button className="logout-button" title="Sign out" onClick={() => logout({ logoutParams: { returnTo: `${window.location.origin}${import.meta.env.BASE_URL}` } })}>↗</button></div></div></header>
-      <div className="page-content">{error && <div className="alert error" role="alert"><span>!</span>{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}{notice && <div className="alert success" role="status"><span>✓</span>{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notice">×</button></div>}
+  return (
+    <div className={`app-shell ${navOpen ? 'navigation-open' : ''}`}>
+      <aside className={`sidebar ${navOpen ? 'sidebar-open' : ''}`} id="primary-navigation" aria-label="Workspace navigation">
+        <a className="brand-lockup" href="#overview" onClick={() => selectView('overview')}>
+          <span className="brand-mark">F</span>
+          <span>FRIIS<span className="brand-sub">INTELLIGENCE</span></span>
+        </a>
+        <button className="sidebar-close" type="button" aria-label="Close navigation" onClick={() => setNavOpen(false)}>×</button>
+        <div className="workspace-label">WORKSPACE</div>
+        <nav className="nav-list" aria-label="Main navigation">
+          {([['overview', '◫', 'Overview'], ['research', '⌕', 'Research'], ['portfolios', '▤', 'Portfolios'], ['escalations', '△', 'Escalations'], ['ingestion', '↑', 'Knowledge base']] as [View, string, string][]).map(([key, icon, label]) => (
+            <button key={key} className={`nav-item ${view === key ? 'active' : ''}`} onClick={() => selectView(key)}>
+              <span className="nav-icon">{icon}</span>
+              {label}
+              {key === 'escalations' && escalations.length > 0 && <span className="nav-count">{escalations.length}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="status-card">
+            <span className={`status-dot ${apiStatus}`} />
+            <div>
+              <strong>Intelligence services</strong>
+              <small>{apiStatus === 'checking' ? 'Checking API…' : apiStatus === 'connected' ? 'API connected' : apiStatus === 'degraded' ? 'API limited · research temporarily unavailable' : 'API unavailable'}</small>
+            </div>
+          </div>
+          <div className="data-note">◈ <span>Analysis is grounded in available evidence. Always apply professional judgment.</span></div>
+        </div>
+      </aside>
+      {navOpen && <button className="sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
+      <main className="main-area">
+        <header className="topbar">
+          <button
+            className="mobile-nav-toggle"
+            type="button"
+            aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={navOpen}
+            aria-controls="primary-navigation"
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+          <div className="breadcrumbs">Workspace <span>/</span> <strong>{view === 'ingestion' ? 'Knowledge base' : titleCase(view)}</strong></div>
+          <div className="top-actions">
+            <span className="environment-pill"><i /> SECURE WORKSPACE</span>
+            <div className="user-menu">
+              <div className="avatar">{(user?.name ?? user?.email ?? 'A').slice(0, 1).toUpperCase()}</div>
+              <span className="user-name">{user?.name ?? user?.email ?? 'Analyst'}</span>
+              <button className="logout-button" title="Sign out" onClick={() => logout({ logoutParams: { returnTo: `${window.location.origin}${import.meta.env.BASE_URL}` } })}>↗</button>
+            </div>
+          </div>
+        </header>
+        <div className="page-content">{error && <div className="alert error" role="alert"><span>!</span>{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}{notice && <div className="alert success" role="status"><span>✓</span>{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notice">×</button></div>}
       {view === 'overview' && <><div className="page-heading"><div><span className="eyebrow">YOUR INTELLIGENCE DESK</span><h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {user?.given_name ?? user?.name?.split(' ')[0] ?? 'Analyst'}.</h1><p>What would you like to understand about your portfolio today?</p></div><button className="button primary" onClick={() => selectView('research')}>＋ Start research</button></div><section className="welcome-banner"><div><span className="eyebrow light">RESEARCH, WITH CONTEXT</span><h2>Ask better questions.<br />Make decisions with evidence.</h2><p>Explore portfolio exposure, investigate risk indicators, and get answers grounded in your knowledge base.</p><button className="banner-link" onClick={() => selectView('research')}>Open research workspace <span>→</span></button></div><div className="banner-orbit"><div className="orbit-ring ring-one"/><div className="orbit-ring ring-two"/><div className="orbit-core">F</div><span className="orbit-node node-one">◈</span><span className="orbit-node node-two">↗</span><span className="orbit-node node-three">⌕</span></div></section><div className="section-heading"><div><span className="eyebrow">AT A GLANCE</span><h2>Your workspace</h2></div><span className="subtle">Live from your connected data</span></div><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Accessible portfolios</span><span className="metric-symbol">▤</span></div><strong>{portfolios.length}</strong><small>Available to your account</small></article><article className="metric-card"><div className="metric-top"><span>Current research session</span><span className="metric-symbol teal">⌕</span></div><strong className="metric-text">Active</strong><small>Short-term conversation memory</small></article><article className="metric-card"><div className="metric-top"><span>Evidence-first answers</span><span className="metric-symbol amber">◈</span></div><strong className="metric-text">Traceable</strong><small>Citations and limitations included</small></article></div><div className="section-heading quick-heading"><div><span className="eyebrow">PICK UP THE THREAD</span><h2>Explore a starting point</h2></div></div><div className="quick-grid">{[['⌕', 'Investigate risk', 'Identify risk signals and supporting evidence in a portfolio.', 'What are the key risk indicators I should review?'], ['▤', 'Understand exposure', 'Explore concentration, allocation, and portfolio positioning.', 'Summarize the largest exposures in my portfolio.'], ['◈', 'Review policy alignment', 'Compare available evidence with relevant policy guidance.', 'What policy guidance applies to the current risk profile?']].map(([icon, title, desc, prompt]) => <button className="quick-card" key={title} onClick={() => { setQuestion(prompt); setView('research') }}><span className="quick-icon">{icon}</span><strong>{title}<span>↗</span></strong><p>{desc}</p></button>)}</div></>}
 
       {view === 'research' && (
@@ -625,7 +677,9 @@ function App() {
         </>
       )}
       <footer className="page-footer"><span>FRIIS · Finance Risk &amp; Investment Intelligence</span><span>Evidence-led decision support <i>·</i> Not investment advice</span></footer></div>
-    </main></div>
+    </main>
+    </div>
+  )
 }
 
 export default App
