@@ -1,0 +1,357 @@
+.executive-summary {
+  display: flex;
+  gap: 13px;
+  margin: 18px 0 4px;
+  padding: 16px 17px;
+  border: 1px solid #d5e9df;
+  border-radius: 8px;
+  background: linear-gradient(120deg, #f1f8f4, #fbfdfb);
+}
+
+.summary-mark {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: #dcefe5;
+  color: #317b65;
+}
+
+.executive-summary .eyebrow {
+  color: #478b74;
+  font-size: 9px;
+}
+
+.executive-summary p {
+  margin-top: 6px;
+  color: #344c43;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.response-toc {
+  margin: 15px 0 4px;
+  border: 1px solid #e6ece9;
+  border-radius: 7px;
+  background: #fbfcfb;
+}
+
+.response-toc summary,
+.response-limitations summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  color: #4a6056;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  list-style: none;
+}
+
+.response-toc summary::-webkit-details-marker,
+.response-limitations summary::-webkit-details-marker,
+.citation-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.response-toc summary::after,
+.response-limitations summary::after {
+  content: '＋';
+  color: #6d8d7f;
+  font-size: 14px;
+}
+
+.response-toc[open] summary::after,
+.response-limitations[open] summary::after {
+  content: '−';
+}
+
+.response-toc summary span {
+  margin-left: auto;
+  color: #87958f;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.response-toc nav {
+  display: grid;
+  gap: 1px;
+  padding: 0 13px 10px;
+}
+
+.response-toc a {
+  width: fit-content;
+  padding: 4px 0;
+  color: #397c67;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.response-toc a:hover,
+.source-link:hover {
+  text-decoration: underline;
+}
+
+.answer-copy {
+  overflow-wrap: anywhere;
+}
+
+.answer-copy h2,
+.answer-copy h3,
+.answer-copy h4 {
+  color: #253b34;
+  font-family: Manrope, sans-serif;
+  line-height: 1.35;
+  letter-spacing: -.02em;
+}
+
+.answer-copy h2 {
+  margin: 19px 0 7px;
+  font-size: 17px;
+}
+
+.answer-copy h3 {
+  margin: 17px 0 6px;
+  font-size: 14px;
+}
+
+.answer-copy h4 {
+  margin: 14px 0 5px;
+  font-size: 12px;
+}
+
+.answer-copy p {
+  margin: 0 0 11px;
+}
+
+.answer-copy p:last-child {
+  margin-bottom: 0;
+}
+
+.answer-copy ul,
+.answer-copy ol {
+  margin: 7px 0 14px;
+  padding-left: 21px;
+}
+
+.answer-copy li {
+  margin: 5px 0;
+  padding-left: 3px;
+}
+
+.answer-copy li::marker {
+  color: #4b9279;
+}
+
+.answer-copy blockquote,
+.citation-detail-body blockquote {
+  margin: 10px 0;
+  padding: 10px 13px;
+  border-left: 3px solid #8bb9a3;
+  border-radius: 0 5px 5px 0;
+  background: #f5f8f6;
+  color: #566a61;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.answer-rule {
+  margin: 15px 0;
+  border: 0;
+  border-top: 1px solid #e8eeeb;
+}
+
+.inline-citation {
+  display: inline;
+  margin: 0 1px;
+  padding: 1px 5px;
+  border: 1px solid #d5e9df;
+  border-radius: 4px;
+  background: #eef7f2;
+  color: #26745f;
+  font-size: .88em;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.inline-citation:hover {
+  border-color: #9dcbb5;
+  background: #e2f2e9;
+}
+
+.response-table-scroll {
+  max-width: 100%;
+  margin: 12px 0 16px;
+  overflow-x: auto;
+  border: 1px solid #e6ece9;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.response-table {
+  width: 100%;
+  min-width: 430px;
+  border-collapse: collapse;
+  white-space: normal;
+}
+
+.response-table th {
+  padding: 11px 13px;
+  background: #f5f8f6;
+  color: #62736b;
+  font-size: 9px;
+}
+
+.response-table td {
+  padding: 10px 13px;
+  border-top: 1px solid #edf1ef;
+  color: #475b52;
+  font-size: 11px;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.evidence-section {
+  margin-top: 19px;
+}
+
+.result-card .citation-list {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.review-callout {
+  border-left-color: #b85b4f;
+  background: #fcf1ef;
+  color: #70463f;
+}
+
+.review-callout strong {
+  color: #8d4038;
+}
+
+.review-callout p,
+.clarification-callout p {
+  margin-top: 5px;
+  line-height: 1.65;
+}
+
+.clarification-callout {
+  border-left-color: #b48b3a;
+  background: #fbf7ed;
+  color: #6d5b39;
+}
+
+.citation-details {
+  overflow: hidden;
+  border: 1px solid #e6ece9;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.citation-details[open] {
+  border-color: #c9ded3;
+  box-shadow: 0 3px 12px #163c2a0a;
+}
+
+.citation-details summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.citation-details summary strong {
+  overflow: hidden;
+  color: #344940;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-label {
+  flex: none;
+  color: #3a8069;
+  font: 500 9px 'DM Mono', monospace;
+}
+
+.citation-chevron {
+  flex: none;
+  margin-left: auto;
+  color: #83928b;
+  transition: transform .15s;
+}
+
+.citation-details[open] .citation-chevron {
+  transform: rotate(180deg);
+}
+
+.citation-detail-body {
+  padding: 0 13px 13px;
+}
+
+.citation-detail-body .citation-meta {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.citation-detail-body blockquote {
+  margin-bottom: 0;
+}
+
+.source-link {
+  display: inline-flex;
+  margin-top: 10px;
+  color: #28745f;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.response-limitations {
+  margin-top: 14px;
+  border: 1px solid #eee4c9;
+  border-radius: 7px;
+  background: #fcf9f1;
+}
+
+.response-limitations summary {
+  color: #79653c;
+}
+
+.limitation-count {
+  margin-left: auto;
+  color: #9a8350;
+  font: 10px 'DM Mono', monospace;
+}
+
+.response-limitations ul {
+  margin: 0;
+  padding: 0 18px 13px 31px;
+  color: #746543;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+@media (max-width: 600px) {
+  .executive-summary {
+    padding: 13px;
+  }
+
+  .response-table {
+    min-width: 390px;
+  }
+
+  .citation-details summary {
+    gap: 7px;
+    padding: 10px;
+  }
+}
