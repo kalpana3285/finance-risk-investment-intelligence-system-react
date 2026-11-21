@@ -4,15 +4,46 @@ import ResearchResponse, { type Citation } from './ResearchResponse'
 import './App.css'
 
 type Portfolio = { portfolio_id: number; portfolio_name: string; portfolio_manager?: string | null; risk_category?: string | null; total_value?: number | string | null; benchmark_index?: string | null }
-type PortfolioDetail = Portfolio & { holdings: { holding_id: number; asset_name?: string | null; asset_type?: string | null; sector?: string | null; allocation_percentage?: number | string | null; market_value?: number | string | null }[]; risk_assessments: { risk_id: number; asset_name?: string | null; risk_type?: string | null; risk_score?: number | null; risk_level?: string | null; risk_description?: string | null; escalation_flag: boolean }[] }
-type QueryResult = { query_id: string; status: string; answer?: string | null; citations: Citation[]; limitations: string[]; clarification_question?: string | null; escalation_id?: string | null; escalation_reason?: string | null; escalation_data_gaps: string[]; failure?: { code: string; message: string; retryable: boolean } | null }
+type PortfolioDetail = Portfolio & { holdings: { holding_id: number; asset_name?: string | null; asset_type?: string | null; sector?: string | null; allocation_percentage?: number | string | null; market_value?: number | string | null; last_updated?: string | null }[]; risk_assessments: { risk_id: number; asset_name?: string | null; risk_type?: string | null; risk_score?: number | null; risk_level?: string | null; risk_description?: string | null; assessment_date?: string | null; escalation_flag: boolean }[] }
+type QueryResult = { query_id: string; status: string; answer?: string | null; citations?: Citation[] | null; limitations?: string[] | null; clarification_question?: string | null; escalation_id?: string | null; escalation_reason?: string | null; escalation_data_gaps?: string[] | null; failure?: { code: string; message: string; retryable: boolean } | null }
 type Escalation = { escalation_id: string; query_id: string; status: string; reason: string; created_at: string }
 type EscalationDetail = Escalation & { question: string; requested_review: string; evidence: Citation[]; attempted_steps: string[]; data_gaps: string[]; answer?: string | null; limitations: string[]; reviewer_notes?: string | null; outcome?: string | null }
 type View = 'overview' | 'research' | 'portfolios' | 'escalations' | 'ingestion'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
-const money = (value?: number | string | null) => value == null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value))
+const formatReportedNumber = (value?: number | string | null) => {
+  if (value == null) return '—'
+  const raw = String(value).trim()
+  const decimal = raw.match(/^(-?)(\d+)(?:\.(\d+))?$/)
+  if (decimal) {
+    const integer = decimal[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    return `${decimal[1]}${integer}${decimal[3] ? `.${decimal[3]}` : ''}`
+  }
+  const numeric = Number(raw)
+  return Number.isFinite(numeric)
+    ? new Intl.NumberFormat('en-US', { maximumSignificantDigits: 21 }).format(numeric)
+    : '—'
+}
+const formatDate = (value?: string | null) => {
+  if (!value) return '—'
+  const date = new Date(`${value}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(date)
+}
 const titleCase = (value?: string | null) => value ? value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—'
+const queryStatusCopy: Record<string, { heading: string; badge: string; style: string }> = {
+  queued: { heading: 'Request received', badge: 'Waiting to start', style: 'queued' },
+  processing: { heading: 'Research in progress', badge: 'Researching', style: 'processing' },
+  completed: { heading: 'Analysis completed', badge: 'Complete', style: 'completed' },
+  needs_clarification: { heading: 'More information needed', badge: 'Your input is needed', style: 'needs-clarification' },
+  escalated: { heading: 'Specialist review required', badge: 'Under review', style: 'escalated' },
+  failed: { heading: 'Analysis could not be completed', badge: 'Not completed', style: 'failed' },
+}
+const reviewStatusCopy: Record<string, { label: string; style: string }> = {
+  open: { label: 'Open', style: 'open' },
+  in_review: { label: 'Under review', style: 'in_review' },
+  resolved: { label: 'Resolved', style: 'resolved' },
+  closed: { label: 'Closed', style: 'closed' },
+}
 
 function App() {
   const { isLoading, isAuthenticated, error: authError, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0()
@@ -122,7 +153,8 @@ function App() {
       setError('This question is too long after adding the selected portfolio ID. Shorten it and try again.')
       return
     }
-    setBusy(true); setError(''); setResult(null); setNotice(selectedPortfolio ? `Research request submitted for Portfolio ID ${selectedPortfolio}. Gathering evidence…` : 'Research request submitted. Gathering evidence…')
+    const portfolioName = portfolios.find((portfolio) => String(portfolio.portfolio_id) === selectedPortfolio)?.portfolio_name
+    setBusy(true); setError(''); setResult(null); setNotice(portfolioName ? `Research request submitted for ${portfolioName}. Gathering evidence…` : selectedPortfolio ? 'Research request submitted for the selected portfolio. Gathering evidence…' : 'Research request submitted. Gathering evidence…')
     try {
       const submitted = await api<{ query_id: string }>('/api/v1/queries', { method: 'POST', body: JSON.stringify({ question: submittedQuestion, portfolio_id: selectedPortfolio ? Number(selectedPortfolio) : null, session_id: sessionId }) })
       await pollQuery(submitted.query_id); setNotice('Research response is ready.')
@@ -147,6 +179,13 @@ function App() {
 
   if (isLoading) return <main className="auth-loading"><div className="brand-mark">F</div><p>Preparing your workspace…</p></main>
   if (!isAuthenticated) return <main className="login-shell"><section className="login-art"><div className="brand-lockup"><span className="brand-mark">F</span><span>FRIIS<span className="brand-sub">INTELLIGENCE</span></span></div><div className="login-message"><span className="eyebrow">FINANCE RISK &amp; INVESTMENT INTELLIGENCE</span><h1>Clarity for<br />every decision.</h1><p>Research portfolios, trace evidence, and surface risk with an AI workspace built for financial teams.</p><div className="login-proof"><span>01 / Evidence-led research</span><span>02 / Portfolio-aware analysis</span><span>03 / Human review built in</span></div></div><span className="art-foot">DECISION INTELLIGENCE · 2026</span></section><section className="login-panel"><div className="login-panel-inner"><span className="eyebrow">YOUR RESEARCH WORKSPACE</span><h2>Welcome to FRIIS</h2><p>Sign in to continue to your secure intelligence workspace.</p>{authError && <div className="alert error" role="alert">{authError.message}</div>}<button className="button primary full" onClick={() => loginWithRedirect()}>Sign in securely <span>↗</span></button><button className="button secondary full" onClick={() => loginWithRedirect({ authorizationParams: { screen_hint: 'signup' } })}>Create an account</button><div className="secure-note"><span>◈</span> Protected with Auth0 · Your data stays scoped to your access</div></div><span className="login-legal">For professional research support. Not investment advice.</span></section></main>
+
+  const resultStatus = result
+    ? queryStatusCopy[result.status] ?? { heading: 'Research update', badge: 'Status update', style: 'unknown' }
+    : null
+  const responseCitations = Array.isArray(result?.citations) ? result.citations : []
+  const responseLimitations = Array.isArray(result?.limitations) ? result.limitations : []
+  const escalationDataGaps = Array.isArray(result?.escalation_data_gaps) ? result.escalation_data_gaps : []
 
   return <div className="app-shell"><aside className="sidebar"><a className="brand-lockup" href="#overview" onClick={() => selectView('overview')}><span className="brand-mark">F</span><span>FRIIS<span className="brand-sub">INTELLIGENCE</span></span></a><div className="workspace-label">WORKSPACE</div><nav className="nav-list" aria-label="Main navigation">{([['overview', '◫', 'Overview'], ['research', '⌕', 'Research'], ['portfolios', '▤', 'Portfolios'], ['escalations', '△', 'Escalations'], ['ingestion', '↑', 'Knowledge base']] as [View, string, string][]).map(([key, icon, label]) => <button key={key} className={`nav-item ${view === key ? 'active' : ''}`} onClick={() => selectView(key)}><span className="nav-icon">{icon}</span>{label}{key === 'escalations' && escalations.length > 0 && <span className="nav-count">{escalations.length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="status-card"><span className={`status-dot ${apiStatus}`}/><div><strong>Intelligence services</strong><small>{apiStatus === 'checking' ? 'Checking API…' : apiStatus === 'connected' ? 'API connected' : apiStatus === 'degraded' ? 'API limited · worker offline' : 'API unavailable'}</small></div></div><div className="data-note">◈ <span>Analysis is grounded in available evidence. Always apply professional judgment.</span></div></div></aside>
     <main className="main-area"><header className="topbar"><div className="breadcrumbs">Workspace <span>/</span> <strong>{view === 'ingestion' ? 'Knowledge base' : titleCase(view)}</strong></div><div className="top-actions"><span className="environment-pill"><i/> SECURE WORKSPACE</span><div className="user-menu"><div className="avatar">{(user?.name ?? user?.email ?? 'A').slice(0, 1).toUpperCase()}</div><span className="user-name">{user?.name ?? user?.email ?? 'Analyst'}</span><button className="logout-button" title="Sign out" onClick={() => logout({ logoutParams: { returnTo: `${window.location.origin}${import.meta.env.BASE_URL}` } })}>↗</button></div></div></header>
@@ -187,7 +226,7 @@ function App() {
                       <option value="">No specific portfolio</option>
                       {portfolios.map((portfolio) => (
                         <option key={portfolio.portfolio_id} value={portfolio.portfolio_id}>
-                          {portfolio.portfolio_name} · ID {portfolio.portfolio_id}
+                          {portfolio.portfolio_name}
                         </option>
                       ))}
                     </select>
@@ -215,11 +254,11 @@ function App() {
                     <div>
                       <span className="eyebrow">RESEARCH RESPONSE</span>
                       <h2 id="research-result-title">
-                        {result.status === 'completed' ? 'Analysis' : titleCase(result.status)}
+                        {resultStatus?.heading}
                       </h2>
                     </div>
-                    <span className={`result-status ${result.status}`}>
-                      {result.status === 'escalated' ? 'Requires human review' : titleCase(result.status)}
+                    <span className={`result-status ${resultStatus?.style ?? 'unknown'}`}>
+                      {resultStatus?.badge}
                     </span>
                   </div>
 
@@ -233,8 +272,8 @@ function App() {
                     <div className="callout review-callout" role="status">
                       <strong>Why this needs review</strong>
                       <p>{result.escalation_reason}</p>
-                      {result.escalation_data_gaps?.length > 0 && (
-                        <ul>{result.escalation_data_gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul>
+                      {escalationDataGaps.length > 0 && (
+                        <ul>{escalationDataGaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul>
                       )}
                     </div>
                   )}
@@ -256,15 +295,21 @@ function App() {
                         void openEscalation(result.escalation_id!)
                       }}
                     >
-                      Open human review <span>→</span>
+                      Open specialist review <span>→</span>
                     </button>
                   )}
 
-                  {(result.answer || result.citations.length > 0 || result.limitations.length > 0) && (
+                  {(result.answer || responseCitations.length > 0 || responseLimitations.length > 0 || result.status === 'completed') && (
                     <ResearchResponse
                       answer={result.answer}
-                      citations={result.citations}
-                      limitations={result.limitations}
+                      citations={responseCitations}
+                      limitations={responseLimitations}
+                      onFollowUp={(prompt) => {
+                        setQuestion(prompt)
+                        const questionField = document.getElementById('research-question')
+                        questionField?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        questionField?.focus({ preventScroll: true })
+                      }}
                     />
                   )}
                 </section>
@@ -291,11 +336,294 @@ function App() {
         </>
       )}
 
-      {view === 'portfolios' && <><div className="page-heading"><div><span className="eyebrow">PORTFOLIO INTELLIGENCE</span><h1>Portfolios</h1><p>Review accessible mandates, holdings, and available risk assessments.</p></div></div>{portfolioDetail ? <><button className="back-button" onClick={() => setPortfolioDetail(null)}>← All portfolios</button><section className="detail-hero"><div><span className="eyebrow light">PORTFOLIO OVERVIEW</span><h2>{portfolioDetail.portfolio_name}</h2><p>{portfolioDetail.portfolio_manager ? `Managed by ${portfolioDetail.portfolio_manager} · ` : ''}{portfolioDetail.benchmark_index ?? 'Benchmark not available'}</p></div><div className="detail-value"><span>Reported total value</span><strong>{money(portfolioDetail.total_value)}</strong></div></section><div className="metric-grid detail-metrics"><article className="metric-card"><small>Risk category</small><strong className="metric-text">{titleCase(portfolioDetail.risk_category)}</strong></article><article className="metric-card"><small>Holdings reported</small><strong>{portfolioDetail.holdings.length}</strong></article><article className="metric-card"><small>Risk assessments</small><strong>{portfolioDetail.risk_assessments.length}</strong></article></div><section className="table-card"><div className="table-title"><h2>Holdings</h2><span>{portfolioDetail.holdings.length} records</span></div><div className="table-scroll"><table><thead><tr><th>Asset</th><th>Type / sector</th><th>Allocation</th><th>Market value</th></tr></thead><tbody>{portfolioDetail.holdings.map((h) => <tr key={h.holding_id}><td><strong>{h.asset_name ?? 'Unspecified asset'}</strong></td><td>{h.asset_type ?? '—'}{h.sector ? ` · ${h.sector}` : ''}</td><td>{h.allocation_percentage == null ? '—' : `${h.allocation_percentage}%`}</td><td>{money(h.market_value)}</td></tr>)}{!portfolioDetail.holdings.length && <tr><td colSpan={4} className="empty-cell">No holdings are available for this portfolio.</td></tr>}</tbody></table></div></section><section className="table-card"><div className="table-title"><h2>Risk assessments</h2><span>{portfolioDetail.risk_assessments.length} records</span></div><div className="table-scroll"><table><thead><tr><th>Asset</th><th>Risk type</th><th>Score</th><th>Level</th><th>Review</th></tr></thead><tbody>{portfolioDetail.risk_assessments.map((r) => <tr key={r.risk_id}><td><strong>{r.asset_name ?? 'Portfolio-level'}</strong>{r.risk_description && <small className="cell-sub">{r.risk_description}</small>}</td><td>{titleCase(r.risk_type)}</td><td>{r.risk_score ?? '—'}</td><td><span className="risk-pill">{titleCase(r.risk_level)}</span></td><td>{r.escalation_flag ? <span className="flag">Flagged</span> : '—'}</td></tr>)}{!portfolioDetail.risk_assessments.length && <tr><td colSpan={5} className="empty-cell">No risk assessments are available.</td></tr>}</tbody></table></div></section></> : <section className="portfolio-grid">{portfolios.map((p) => <article className="portfolio-card" key={p.portfolio_id}><div className="portfolio-card-top"><span className="portfolio-avatar">{p.portfolio_name.slice(0, 1).toUpperCase()}</span><span className="risk-pill">{titleCase(p.risk_category)}</span></div><h2>{p.portfolio_name}</h2><p>{p.portfolio_manager ? `Managed by ${p.portfolio_manager}` : 'Manager not specified'}</p><div className="portfolio-value"><span>Reported value</span><strong>{money(p.total_value)}</strong></div><div className="portfolio-card-foot"><span>{p.benchmark_index ?? 'Benchmark unavailable'}</span><button className="text-button" onClick={() => void openPortfolio(p.portfolio_id)}>View details →</button></div></article>)}{portfolios.length === 0 && <div className="empty-state"><span>▤</span><h2>No portfolios available</h2><p>Portfolio access is scoped by your account. Contact your administrator if you expect to see data here.</p></div>}</section>}</>}
+      {view === 'portfolios' && (
+        <>
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">PORTFOLIO INTELLIGENCE</span>
+              <h1>Portfolios</h1>
+              <p>Review accessible mandates, holdings, and available risk assessments.</p>
+            </div>
+          </div>
+          {portfolioDetail ? (
+            <>
+              <button className="back-button" onClick={() => setPortfolioDetail(null)}>← All portfolios</button>
+              <section className="detail-hero">
+                <div>
+                  <span className="eyebrow light">PORTFOLIO OVERVIEW</span>
+                  <h2>{portfolioDetail.portfolio_name}</h2>
+                  <p>
+                    {portfolioDetail.portfolio_manager ? `Managed by ${portfolioDetail.portfolio_manager} · ` : ''}
+                    {portfolioDetail.benchmark_index ?? 'Benchmark not available'}
+                  </p>
+                </div>
+                <div className="detail-value">
+                  <span>Reported value · currency not provided</span>
+                  <strong>{formatReportedNumber(portfolioDetail.total_value)}</strong>
+                </div>
+              </section>
+              <div className="metric-grid detail-metrics">
+                <article className="metric-card">
+                  <small>Risk category</small>
+                  <strong className="metric-text">{titleCase(portfolioDetail.risk_category)}</strong>
+                </article>
+                <article className="metric-card">
+                  <small>Holdings reported</small>
+                  <strong>{portfolioDetail.holdings.length}</strong>
+                </article>
+                <article className="metric-card">
+                  <small>Risk assessments</small>
+                  <strong>{portfolioDetail.risk_assessments.length}</strong>
+                </article>
+              </div>
+              <section className="table-card">
+                <div className="table-title">
+                  <h2>Holdings</h2>
+                  <span>{portfolioDetail.holdings.length} holdings</span>
+                </div>
+                <div className="table-scroll">
+                  <table className="holdings-table">
+                    <thead>
+                      <tr>
+                        <th>Asset</th>
+                        <th>Type / sector</th>
+                        <th>Allocation</th>
+                        <th>Market value · currency not provided</th>
+                        <th>Last reported</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {portfolioDetail.holdings.map((holding) => (
+                        <tr key={holding.holding_id}>
+                          <td><strong>{holding.asset_name ?? 'Unspecified asset'}</strong></td>
+                          <td>{holding.asset_type ?? '—'}{holding.sector ? ` · ${holding.sector}` : ''}</td>
+                          <td>{holding.allocation_percentage == null ? '—' : `${formatReportedNumber(holding.allocation_percentage)}%`}</td>
+                          <td>{formatReportedNumber(holding.market_value)}</td>
+                          <td>{formatDate(holding.last_updated)}</td>
+                        </tr>
+                      ))}
+                      {!portfolioDetail.holdings.length && (
+                        <tr><td colSpan={5} className="empty-cell">No holdings are available for this portfolio.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section className="table-card">
+                <div className="table-title">
+                  <h2>Risk assessments</h2>
+                  <span>{portfolioDetail.risk_assessments.length} assessments</span>
+                </div>
+                <div className="table-scroll">
+                  <table className="risk-assessments-table">
+                    <thead>
+                      <tr>
+                        <th>Asset</th>
+                        <th>Risk type</th>
+                        <th>Score · out of 100</th>
+                        <th>Level</th>
+                        <th>Assessment date</th>
+                        <th>Review</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {portfolioDetail.risk_assessments.map((assessment) => (
+                        <tr key={assessment.risk_id}>
+                          <td>
+                            <strong>{assessment.asset_name ?? 'Portfolio-level'}</strong>
+                            {assessment.risk_description && <small className="cell-sub">{assessment.risk_description}</small>}
+                          </td>
+                          <td>{titleCase(assessment.risk_type)}</td>
+                          <td>{assessment.risk_score == null ? '—' : `${formatReportedNumber(assessment.risk_score)} / 100`}</td>
+                          <td><span className="risk-pill">{titleCase(assessment.risk_level)}</span></td>
+                          <td>{formatDate(assessment.assessment_date)}</td>
+                          <td>{assessment.escalation_flag ? <span className="flag">Requires review</span> : '—'}</td>
+                        </tr>
+                      ))}
+                      {!portfolioDetail.risk_assessments.length && (
+                        <tr><td colSpan={6} className="empty-cell">No risk assessments are available.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          ) : (
+            <section className="portfolio-grid">
+              {portfolios.map((portfolio) => (
+                <article className="portfolio-card" key={portfolio.portfolio_id}>
+                  <div className="portfolio-card-top">
+                    <span className="portfolio-avatar">{portfolio.portfolio_name.slice(0, 1).toUpperCase()}</span>
+                    <span className="risk-pill">{titleCase(portfolio.risk_category)}</span>
+                  </div>
+                  <h2>{portfolio.portfolio_name}</h2>
+                  <p>{portfolio.portfolio_manager ? `Managed by ${portfolio.portfolio_manager}` : 'Manager not specified'}</p>
+                  <div className="portfolio-value">
+                    <span>Reported value · currency not provided</span>
+                    <strong>{formatReportedNumber(portfolio.total_value)}</strong>
+                  </div>
+                  <div className="portfolio-card-foot">
+                    <span>{portfolio.benchmark_index ?? 'Benchmark unavailable'}</span>
+                    <button className="text-button" onClick={() => void openPortfolio(portfolio.portfolio_id)}>View details →</button>
+                  </div>
+                </article>
+              ))}
+              {portfolios.length === 0 && (
+                <div className="empty-state">
+                  <span>▤</span>
+                  <h2>No portfolios available</h2>
+                  <p>Portfolio access is scoped by your account. Contact your administrator if you expect to see data here.</p>
+                </div>
+              )}
+            </section>
+          )}
+        </>
+      )}
 
-      {view === 'escalations' && <><div className="page-heading"><div><span className="eyebrow">HUMAN REVIEW QUEUE</span><h1>Escalations</h1><p>Review questions that need additional context or specialist judgment.</p></div><button className="button secondary" onClick={() => void loadEscalations()}>↻ Refresh queue</button></div><div className="escalation-layout"><section className="table-card escalation-table"><div className="table-title"><h2>Review queue</h2><span>{escalations.length} cases</span></div><div className="table-scroll"><table><thead><tr><th>Case</th><th>Reason</th><th>Created</th><th>Status</th><th/></tr></thead><tbody>{escalations.map((e) => <tr key={e.escalation_id} className={activeEscalation?.escalation_id === e.escalation_id ? 'selected-row' : ''}><td><strong>{e.escalation_id.slice(0, 12)}</strong><small className="cell-sub">Query {e.query_id.slice(0, 10)}</small></td><td>{e.reason}</td><td>{new Date(e.created_at).toLocaleDateString()}</td><td><span className={`result-status ${e.status}`}>{titleCase(e.status)}</span></td><td><button className="text-button" onClick={() => void openEscalation(e.escalation_id)}>Review →</button></td></tr>)}{!escalations.length && <tr><td colSpan={5} className="empty-cell">No escalation cases are currently available.</td></tr>}</tbody></table></div></section>{activeEscalation && <section className="review-card"><div className="table-title"><div><span className="eyebrow">CASE REVIEW</span><h2>{activeEscalation.escalation_id.slice(0, 16)}</h2></div><button className="icon-button" onClick={() => setActiveEscalation(null)} aria-label="Close case">×</button></div><div className="review-block"><span className="eyebrow">QUESTION</span><p>{activeEscalation.question}</p></div><div className="review-block"><span className="eyebrow">REQUESTED REVIEW</span><p>{activeEscalation.requested_review}</p></div>{activeEscalation.data_gaps.length > 0 && <div className="review-block"><span className="eyebrow">DATA GAPS</span><ul>{activeEscalation.data_gaps.map((d, i) => <li key={i}>{d}</li>)}</ul></div>}<form onSubmit={saveReview} className="review-form"><label>Status<select value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)}><option value="open">Open</option><option value="in_review">In review</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></label><label>Outcome (required to resolve)<select required={reviewStatus === "resolved"} value={reviewOutcome} onChange={(e) => setReviewOutcome(e.target.value)}><option value="">Select an outcome</option><option value="guidance_provided">Guidance provided</option><option value="more_information_requested">More information requested</option><option value="no_further_action">No further action</option></select></label><label>Reviewer notes<textarea rows={4} maxLength={4000} value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} placeholder="Add review notes…"/></label><button className="button primary full" disabled={busy}>Save review</button></form></section>}</div></>}
 
-      {view === 'ingestion' && <><div className="page-heading"><div><span className="eyebrow">KNOWLEDGE OPERATIONS</span><h1>Knowledge base</h1><p>Add source documents for retrieval and evidence-backed research.</p></div></div><div className="ingestion-layout"><section className="upload-card"><div className="upload-symbol">↑</div><h2>Upload a research document</h2><p>FRIIS will process the document, create searchable chunks, and add them to the knowledge collection.</p><form onSubmit={uploadDocument}><label className="file-drop" htmlFor="document-file"><span className="file-icon">▧</span><strong>{uploadFile?.name ?? 'Choose a document to upload'}</strong><small>{uploadFile ? `${(uploadFile.size / 1024 / 1024).toFixed(2)} MB · Ready to process` : 'Select a supported document from your device'}</small><input id="document-file" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} /></label><button className="button primary full" disabled={busy || !uploadFile}>{busy ? <><span className="spinner"/> Processing document</> : 'Upload and process'}</button></form>{uploadResult && <div className="upload-success"><strong>Document processed successfully</strong><span>{String(uploadResult.filename)} · {String(uploadResult.total_chunks)} searchable chunks · {String(uploadResult.collection_name)}</span></div>}</section><aside className="aside-card ingestion-info"><span className="aside-icon">◈</span><h3>Operator access required</h3><p>Document ingestion is restricted to authorized operators. Your permissions are checked securely by the API when you submit a document.</p><div className="divider"/><strong>Supported processing</strong><ul><li>Document parsing and chunking</li><li>Searchable vector collection</li><li>Source and chunk metadata</li></ul></aside></div></>}
+      {view === 'escalations' && (
+        <>
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">HUMAN REVIEW QUEUE</span>
+              <h1>Escalations</h1>
+              <p>Review questions that need additional context or specialist judgment.</p>
+            </div>
+            <button className="button secondary" onClick={() => void loadEscalations()}>↻ Refresh queue</button>
+          </div>
+          <div className="escalation-layout">
+            <section className="table-card escalation-table">
+              <div className="table-title">
+                <h2>Review queue</h2>
+                <span>{escalations.length} {escalations.length === 1 ? 'case' : 'cases'}</span>
+              </div>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr><th>Case</th><th>Reason</th><th>Created</th><th>Status</th><th /></tr>
+                  </thead>
+                  <tbody>
+                    {escalations.map((escalation, index) => (
+                      <tr
+                        key={escalation.escalation_id}
+                        className={activeEscalation?.escalation_id === escalation.escalation_id ? 'selected-row' : ''}
+                      >
+                        <td><strong>Case {index + 1}</strong></td>
+                        <td>{escalation.reason}</td>
+                        <td>{new Date(escalation.created_at).toLocaleDateString()}</td>
+                        <td>
+                          <span className={`result-status ${reviewStatusCopy[escalation.status]?.style ?? 'unknown'}`}>
+                            {reviewStatusCopy[escalation.status]?.label ?? 'Status update'}
+                          </span>
+                        </td>
+                        <td><button className="text-button" onClick={() => void openEscalation(escalation.escalation_id)}>Review →</button></td>
+                      </tr>
+                    ))}
+                    {!escalations.length && (
+                      <tr><td colSpan={5} className="empty-cell">No cases currently need specialist review.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            {activeEscalation && (
+              <section className="review-card">
+                <div className="table-title">
+                  <div><span className="eyebrow">CASE REVIEW</span><h2>Review details</h2></div>
+                  <button className="icon-button" onClick={() => setActiveEscalation(null)} aria-label="Close case">×</button>
+                </div>
+                <div className="review-block">
+                  <span className="eyebrow">QUESTION</span>
+                  <p>{activeEscalation.question}</p>
+                </div>
+                <div className="review-block">
+                  <span className="eyebrow">REQUESTED REVIEW</span>
+                  <p>{activeEscalation.requested_review}</p>
+                </div>
+                {activeEscalation.data_gaps.length > 0 && (
+                  <div className="review-block">
+                    <span className="eyebrow">INFORMATION GAPS</span>
+                    <ul>{activeEscalation.data_gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul>
+                  </div>
+                )}
+                <form onSubmit={saveReview} className="review-form">
+                  <label>
+                    Review status
+                    <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value)}>
+                      <option value="open">Open</option>
+                      <option value="in_review">Under review</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </label>
+                  <label>
+                    Outcome (required to resolve)
+                    <select required={reviewStatus === 'resolved'} value={reviewOutcome} onChange={(event) => setReviewOutcome(event.target.value)}>
+                      <option value="">Select an outcome</option>
+                      <option value="guidance_provided">Guidance provided</option>
+                      <option value="more_information_requested">More information requested</option>
+                      <option value="no_further_action">No further action</option>
+                    </select>
+                  </label>
+                  <label>
+                    Reviewer notes
+                    <textarea rows={4} maxLength={4000} value={reviewNotes} onChange={(event) => setReviewNotes(event.target.value)} placeholder="Add review notes…" />
+                  </label>
+                  <button className="button primary full" disabled={busy}>Save review</button>
+                </form>
+              </section>
+            )}
+          </div>
+        </>
+      )}
+
+      {view === 'ingestion' && (
+        <>
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">KNOWLEDGE OPERATIONS</span>
+              <h1>Knowledge base</h1>
+              <p>Add source documents for evidence-backed research.</p>
+            </div>
+          </div>
+          <div className="ingestion-layout">
+            <section className="upload-card">
+              <div className="upload-symbol">↑</div>
+              <h2>Upload a research document</h2>
+              <p>FRIIS will make the document searchable so its contents can support future research.</p>
+              <form onSubmit={uploadDocument}>
+                <label className="file-drop" htmlFor="document-file">
+                  <span className="file-icon">▧</span>
+                  <strong>{uploadFile?.name ?? 'Choose a document to upload'}</strong>
+                  <small>{uploadFile ? `${(uploadFile.size / 1024 / 1024).toFixed(2)} MB · Ready to process` : 'Select a supported document from your device'}</small>
+                  <input id="document-file" type="file" onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)} />
+                </label>
+                <button className="button primary full" disabled={busy || !uploadFile}>
+                  {busy ? <><span className="spinner" /> Processing document</> : 'Upload and process'}
+                </button>
+              </form>
+              {uploadResult && (
+                <div className="upload-success">
+                  <strong>Document added to the knowledge base</strong>
+                  <span>{String(uploadResult.filename)}</span>
+                </div>
+              )}
+            </section>
+            <aside className="aside-card ingestion-info">
+              <span className="aside-icon">◈</span>
+              <h3>Operator access required</h3>
+              <p>Document uploads are limited to authorized operators. Your permissions are checked when you submit a document.</p>
+              <div className="divider" />
+              <strong>How documents are used</strong>
+              <ul>
+                <li>Document content is prepared for search</li>
+                <li>Available evidence can support research answers</li>
+                <li>Source details are shown when available</li>
+              </ul>
+            </aside>
+          </div>
+        </>
+      )}
       <footer className="page-footer"><span>FRIIS · Finance Risk &amp; Investment Intelligence</span><span>Evidence-led decision support <i>·</i> Not investment advice</span></footer></div>
     </main></div>
 }
