@@ -21,7 +21,7 @@
 
 .executive-summary .eyebrow {
   color: #478b74;
-  font-size: 24px;
+  font-size: 19px;
 }
 
 .overview-header {
@@ -42,7 +42,7 @@
 
 .trace-session-meta {
   color: #87958f;
-  font-size: 22px;
+  font-size: 17px;
   overflow-wrap: anywhere;
 }
 
@@ -52,7 +52,7 @@
   gap: 5px;
   width: fit-content;
   color: #537567;
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 550;
   text-decoration: none;
 }
@@ -65,14 +65,14 @@
 
 @media (max-width: 620px) {
   .overview-header { align-items: flex-start; }
-  .trace-session-meta, .langfuse-trace-link { font-size: 18px; }
+  .trace-session-meta, .langfuse-trace-link { font-size: 13px; }
   .answer-status { width: 100%; }
 }
 
 .executive-summary p {
   margin-top: 6px;
   color: #344c43;
-  font-size: 27px;
+  font-size: 22px;
   line-height: 1.7;
 }
 
@@ -92,7 +92,7 @@
   padding: 11px 13px;
   color: #4a6056;
   cursor: pointer;
-  font-size: 26px;
+  font-size: 21px;
   font-weight: 650;
   list-style: none;
 }
@@ -105,7 +105,7 @@
 .response-toc summary::after {
   content: '＋';
   color: #6d8d7f;
-  font-size: 29px;
+  font-size: 24px;
 }
 
 .response-toc[open] summary::after {
@@ -115,7 +115,7 @@
 .response-toc summary span {
   margin-left: auto;
   color: #87958f;
-  font-size: 25px;
+  font-size: 20px;
   font-weight: 400;
 }
 
@@ -129,7 +129,7 @@
   width: fit-content;
   padding: 4px 0;
   color: #397c67;
-  font-size: 26px;
+  font-size: 21px;
   line-height: 1.5;
 }
 
@@ -157,7 +157,7 @@
   background: transparent;
   color: #76847d;
   cursor: pointer;
-  font-size: 26px;
+  font-size: 21px;
   font-weight: 600;
 }
 
@@ -174,7 +174,7 @@
   border-radius: 9px;
   background: #edf2f5;
   color: #607989;
-  font-size: 24px;
+  font-size: 19px;
 }
 
 .response-tabs button:focus-visible,
@@ -191,7 +191,7 @@
 .overview-unavailable {
   padding: 18px 4px;
   color: #718079;
-  font-size: 27px;
+  font-size: 22px;
 }
 
 .overview-unavailable .text-button {
@@ -220,17 +220,17 @@
 
 .answer-copy h2 {
   margin: 19px 0 7px;
-  font-size: 32px;
+  font-size: 27px;
 }
 
 .answer-copy h3 {
   margin: 17px 0 6px;
-  font-size: 29px;
+  font-size: 24px;
 }
 
 .answer-copy h4 {
   margin: 14px 0 5px;
-  font-size: 27px;
+  font-size: 22px;
 }
 
 .answer-copy p {
@@ -281,7 +281,7 @@
   border-radius: 0 5px 5px 0;
   background: #f5f8f6;
   color: #566a61;
-  font-size: 26px;
+  font-size: 21px;
   line-height: 1.7;
 }
 
@@ -300,7 +300,7 @@
   border-radius: 7px;
   background: #f5f8f6;
   color: #344c43;
-  font: 24px/1.6 'DM Mono', monospace;
+  font: 19px/1.6 'DM Mono', monospace;
   white-space: pre;
 }
 
@@ -342,7 +342,7 @@
   border-radius: 4px;
   background: #eef7f2;
   color: #26745f;
-  font-size: calc(.88em + 15px);
+  font-size: calc(.88em + 10px);
   font-weight: 650;
   white-space: nowrap;
 }
@@ -354,13 +354,13 @@
 
 .unresolved-citation {
   color: #78867f;
-  font-size: calc(.9em + 15px);
+  font-size: calc(.9em + 10px);
   font-style: italic;
 }
 
 .humanized-inline-code {
   color: #4a665a;
-  font-size: calc(.94em + 15px);
+  font-size: calc(.94em + 10px);
 }
 
 .technical-details {
@@ -374,7 +374,7 @@
   padding: 9px 12px;
   color: #52685e;
   cursor: pointer;
-  font-size: 25px;
+  font-size: 20px;
   font-weight: 650;
 }
 
@@ -385,7 +385,7 @@
   overflow: auto;
   border-top: 1px solid #e6ece9;
   color: #4d5f56;
-  font: 25px/1.6 'DM Mono', monospace;
+  font: 20px/1.6 'DM Mono', monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -410,14 +410,14 @@
   padding: 11px 13px;
   background: #f5f8f6;
   color: #62736b;
-  font-size: 24px;
+  font-size: 19px;
 }
 
 .response-table td {
   padding: 10px 13px;
   border-top: 1px solid #edf1ef;
   color: #475b52;
-  font-size: 26px;
+  font-size: 21px;
   line-height: 1.5;
   vertical-align: top;
 }
@@ -438,7 +438,7 @@
 .response-empty {
   margin: 16px 0 0;
   color: #77867f;
-  font-size: 27px;
+  font-size: 22px;
 }
 
 .evidence-section {
@@ -499,7 +499,7 @@
   flex: 1;
   overflow: hidden;
   color: #344940;
-  font-size: 26px;
+  font-size: 21px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -508,14 +508,14 @@
 .citation-summary-meta {
   flex: none;
   color: #819088;
-  font-size: 24px;
+  font-size: 19px;
   white-space: nowrap;
 }
 
 .source-label {
   flex: none;
   color: #3a8069;
-  font: 500 24px 'DM Mono', monospace;
+  font: 500 19px 'DM Mono', monospace;
 }
 
 .citation-chevron {
@@ -535,7 +535,7 @@
 
 .citation-detail-body .citation-meta {
   margin: 0;
-  font-size: 25px;
+  font-size: 20px;
   line-height: 1.6;
 }
 
@@ -546,7 +546,7 @@
 .evidence-excerpt-label {
   margin-top: 10px;
   color: #77877f;
-  font-size: 25px;
+  font-size: 20px;
   font-weight: 650;
 }
 
@@ -576,19 +576,19 @@
 
 .response-limitations-heading h3 {
   margin: 0;
-  font: 650 26px Manrope, sans-serif;
+  font: 650 21px Manrope, sans-serif;
 }
 
 .limitation-count {
   color: #9a8350;
-  font: 25px 'DM Mono', monospace;
+  font: 20px 'DM Mono', monospace;
 }
 
 .response-limitations ul {
   margin: 8px 0 0;
   padding-left: 17px;
   color: #746543;
-  font-size: 26px;
+  font-size: 21px;
   line-height: 1.7;
 }
 
@@ -600,7 +600,7 @@
   display: block;
   margin-bottom: 8px;
   color: #64746c;
-  font-size: 25px;
+  font-size: 20px;
   font-weight: 650;
 }
 
@@ -617,7 +617,7 @@
   background: #fff;
   color: #456658;
   cursor: pointer;
-  font-size: 25px;
+  font-size: 20px;
   text-align: left;
 }
 
@@ -636,7 +636,7 @@
   }
 
   .markdown-answer pre {
-    font-size: 22px;
+    font-size: 17px;
   }
 
   .citation-details summary {
