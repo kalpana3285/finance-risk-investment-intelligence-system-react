@@ -32,6 +32,14 @@
   margin-bottom: 5px;
 }
 
+.response-trace-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 14px;
+  margin: 0 0 12px;
+}
+
 .trace-session-meta {
   color: #87958f;
   font-size: 22px;

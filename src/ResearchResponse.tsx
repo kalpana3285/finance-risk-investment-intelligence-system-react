@@ -414,6 +414,12 @@ export default function ResearchResponse({ answer, answerContent, sessionId, tra
 
   return (
     <>
+      {traceHref && (
+        <div className="response-trace-meta">
+          {sessionId && <span className="trace-session-meta">Session {sessionId}</span>}
+          <TraceLink href={traceHref} />
+        </div>
+      )}
       {!answer && !structured && citations.length === 0 && limitations.length === 0 && (
         <p className="response-empty">No written answer or supporting evidence was returned.</p>
       )}
@@ -424,7 +430,6 @@ export default function ResearchResponse({ answer, answerContent, sessionId, tra
             <span aria-hidden="true">●</span>
             {structured.status === 'success' ? 'Research complete' : structured.status.replaceAll('_', ' ')}
             <span className="confidence-label">Confidence: {structured.confidence}</span>
-            <TraceLink href={traceHref} />
           </div>
           <section className="executive-summary" aria-labelledby="structured-summary-title">
             <span className="summary-mark" aria-hidden="true">✦</span>
@@ -496,8 +501,6 @@ export default function ResearchResponse({ answer, answerContent, sessionId, tra
                   <div>
                     <div className="overview-header">
                       <span className="eyebrow">RESPONSE OVERVIEW</span>
-                      {sessionId && <span className="trace-session-meta">Session {sessionId}</span>}
-                      <TraceLink href={traceHref} />
                     </div>
                     {markdownAnswer(overviewMarkdown)}
                   </div>
