@@ -10,8 +10,15 @@ type QueryResult = { query_id: string; status: string; answer?: string | null; a
 type Escalation = { escalation_id: string; query_id: string; status: string; reason: string; created_at: string }
 type EscalationDetail = Escalation & { question: string; requested_review: string; evidence: Citation[]; attempted_steps: string[]; data_gaps: string[]; review_context?: Record<string, unknown>; answer?: string | null; limitations: string[]; reviewer_notes?: string | null; outcome?: string | null }
 type View = 'overview' | 'research' | 'portfolios' | 'escalations' | 'ingestion'
+type HostedEvaluationSummary = { dataset_name: string; experiment_name: string; experiment_url?: string | null; item_count: number; results_count: number; completed: number; task_errors: number; api_failed: number }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+const hasAdminRole = (user: unknown) => {
+  if (!user || typeof user !== 'object') return false
+  const claims = user as Record<string, unknown>
+  const roles = claims['https://friis-api/roles'] ?? claims.roles
+  return Array.isArray(roles) ? roles.includes('admin') : roles === 'admin'
+}
 const queryPollIntervalMs = 1500
 const queryPollMaxAttempts = 180
 const formatReportedNumber = (value?: number | string | null) => {
@@ -63,6 +70,8 @@ function AppContent({ sessionOwner }: { sessionOwner: string }) {
   const [question, setQuestion] = useState('')
   const [result, setResult] = useState<QueryResult | null>(null)
   const [busy, setBusy] = useState(false)
+  const [evaluationRunning, setEvaluationRunning] = useState(false)
+  const [evaluationSummary, setEvaluationSummary] = useState<HostedEvaluationSummary | null>(null)
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'degraded' | 'offline'>('checking')
   const [error, setError] = useState('')
   const [sessionId, setSessionId] = useState(() => {
@@ -106,6 +115,24 @@ function AppContent({ sessionOwner }: { sessionOwner: string }) {
     if (response.status === 204) return undefined as T
     return response.json() as Promise<T>
   }, [getAccessTokenSilently])
+
+  const runHostedEvaluation = async () => {
+    if (evaluationRunning || !window.confirm('Run every item in the hosted Langfuse golden dataset through the live FRIIS workflow? This creates query records and model calls, and may take several minutes.')) return
+    setEvaluationRunning(true)
+    setEvaluationSummary(null)
+    setError('')
+    setNotice('Running the hosted golden dataset. Keep this page open until the run completes…')
+    try {
+      const summary = await api<HostedEvaluationSummary>('/api/v1/admin/evaluations/langfuse-hosted', { method: 'POST' })
+      setEvaluationSummary(summary)
+      setNotice(`Hosted evaluation finished: ${summary.results_count}/${summary.item_count} items recorded.`)
+    } catch (e) {
+      setNotice('')
+      setError(e instanceof Error ? e.message : 'The hosted evaluation could not complete.')
+    } finally {
+      setEvaluationRunning(false)
+    }
+  }
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -247,6 +274,10 @@ function AppContent({ sessionOwner }: { sessionOwner: string }) {
               {key === 'escalations' && escalations.length > 0 && <span className="nav-count">{escalations.length}</span>}
             </button>
           ))}
+          {hasAdminRole(user) && <button className="nav-item" type="button" onClick={() => void runHostedEvaluation()} disabled={evaluationRunning}>
+            <span className="nav-icon">{evaluationRunning ? '◌' : '✓'}</span>
+            {evaluationRunning ? 'Running Golden Dataset…' : 'Run Golden Dataset'}
+          </button>}
         </nav>
         <div className="sidebar-bottom">
           <div className="status-card">
@@ -282,7 +313,7 @@ function AppContent({ sessionOwner }: { sessionOwner: string }) {
             </div>
           </div>
         </header>
-        <div className="page-content">{error && <div className="alert error" role="alert"><span>!</span>{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}{notice && <div className="alert success" role="status"><span>✓</span>{notice}<button onClick={() => setNotice('')} aria-label="Dismiss notice">×</button></div>}
+        <div className="page-content">{error && <div className="alert error" role="alert"><span>!</span>{error}<button onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}{notice && <div className="alert success" role="status"><span>{evaluationRunning ? <span className="spinner" /> : '✓'}</span>{notice}{evaluationSummary?.experiment_url && <a href={evaluationSummary.experiment_url} target="_blank" rel="noreferrer">Open Langfuse experiment →</a>}<button onClick={() => setNotice('')} aria-label="Dismiss notice">×</button></div>}
       {view === 'overview' && <><div className="page-heading"><div><span className="eyebrow">YOUR INTELLIGENCE DESK</span><h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {user?.given_name ?? user?.name?.split(' ')[0] ?? 'Analyst'}.</h1><p>What would you like to understand about your portfolio today?</p></div><button className="button primary" onClick={() => selectView('research')}>＋ Start research</button></div><section className="welcome-banner"><div><span className="eyebrow light">RESEARCH, WITH CONTEXT</span><h2>Ask better questions.<br />Make decisions with evidence.</h2><p>Explore portfolio exposure, investigate risk indicators, and get answers grounded in your knowledge base.</p><button className="banner-link" onClick={() => selectView('research')}>Open research workspace <span>→</span></button></div><div className="banner-orbit"><div className="orbit-ring ring-one"/><div className="orbit-ring ring-two"/><div className="orbit-core">F</div><span className="orbit-node node-one">◈</span><span className="orbit-node node-two">↗</span><span className="orbit-node node-three">⌕</span></div></section><div className="section-heading"><div><span className="eyebrow">AT A GLANCE</span><h2>Your workspace</h2></div><span className="subtle">Live from your connected data</span></div><div className="metric-grid"><article className="metric-card"><div className="metric-top"><span>Accessible portfolios</span><span className="metric-symbol">▤</span></div><strong>{portfolios.length}</strong><small>Available to your account</small></article><article className="metric-card"><div className="metric-top"><span>Current research session</span><span className="metric-symbol teal">⌕</span></div><strong className="metric-text">Active</strong><small>Short-term conversation memory</small></article><article className="metric-card"><div className="metric-top"><span>Evidence-first answers</span><span className="metric-symbol amber">◈</span></div><strong className="metric-text">Traceable</strong><small>Citations and limitations included</small></article></div><div className="section-heading quick-heading"><div><span className="eyebrow">PICK UP THE THREAD</span><h2>Explore a starting point</h2></div></div><div className="quick-grid">{[['⌕', 'Investigate risk', 'Identify risk signals and supporting evidence in a portfolio.', 'What are the key risk indicators I should review?'], ['▤', 'Understand exposure', 'Explore concentration, allocation, and portfolio positioning.', 'Summarize the largest exposures in my portfolio.'], ['◈', 'Review policy alignment', 'Compare available evidence with relevant policy guidance.', 'What policy guidance applies to the current risk profile?']].map(([icon, title, desc, prompt]) => <button className="quick-card" key={title} onClick={() => { setQuestion(prompt); setView('research') }}><span className="quick-icon">{icon}</span><strong>{title}<span>↗</span></strong><p>{desc}</p></button>)}</div></>}
 
       {view === 'research' && (
