@@ -5,10 +5,10 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   base: process.env.GITHUB_ACTIONS === 'true' ? '/finance-risk-investment-intelligence-system-react/' : '/',
-  /*server: {
+  server: {
     proxy: {
       '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
       '/health': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
-  },*/
+  },
 })

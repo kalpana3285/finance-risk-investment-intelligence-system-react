@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { normalizeAnswerMarkdown } from './normalizeAnswerMarkdown'
 import './ResearchResponse.css'
 
 export type Citation = {
@@ -12,12 +13,30 @@ export type Citation = {
   record_reference?: string | null
 }
 
+export type AnswerContent = {
+  status: 'success' | 'partial' | 'insufficient_data' | 'requires_human_review'
+  question: string
+  executive_summary: string
+  answer: string
+  key_findings: { title: string; description: string; importance: 'low' | 'medium' | 'high'; citation_indices: number[] }[]
+  metrics: { name: string; value: string; unit?: string | null; period?: string | null; description?: string | null; citation_indices: number[] }[]
+  risks_and_considerations: { title: string; description: string; severity: string; citation_indices: number[] }[]
+  confidence: 'low' | 'medium' | 'high' | 'unknown'
+}
+
 type Props = {
   answer?: string | null
+  answerContent?: AnswerContent | null
+  sessionId?: string | null
+  traceId?: string | null
+  traceUrl?: string | null
+  requestStatus?: string | null
   citations: Citation[]
   limitations: string[]
   onFollowUp?: (prompt: string) => void
 }
+
+const MarkdownAnswerRenderer = lazy(() => import('./MarkdownAnswerRenderer'))
 
 type TableAlignment = 'left' | 'center' | 'right'
 
@@ -261,13 +280,50 @@ function humanizeEvidenceType(value?: string | null): string | null {
   return evidenceTypeLabels[value] ?? humanizeIdentifiers(value).replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-export default function ResearchResponse({ answer, citations, limitations, onFollowUp }: Props) {
-  const blocks = answer ? parseAnswer(answer) : []
+function resolveTraceHref(traceId?: string | null, traceUrl?: string | null): string | null {
+  if (!traceId || !/^[a-f\d]{32}$/i.test(traceId) || !traceUrl) return null
+  try {
+    const url = new URL(traceUrl)
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return null
+    if (!url.pathname.endsWith(`/traces/${traceId}`)) return null
+    return url.href
+  } catch {
+    return null
+  }
+}
+
+function TraceLink({ href }: { href: string | null }) {
+  if (!href) return null
+  return (
+    <a
+      className="langfuse-trace-link"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open this request's trace in Langfuse"
+      aria-label="View Trace in Langfuse (opens in a new tab)"
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false">
+        <path d="M6 3H3.75A1.75 1.75 0 0 0 2 4.75v7.5A1.75 1.75 0 0 0 3.75 14h7.5A1.75 1.75 0 0 0 13 12.25V10M8 2h6v6m-.5-5.5L7 9" />
+      </svg>
+      View Trace in Langfuse
+    </a>
+  )
+}
+
+export default function ResearchResponse({ answer, answerContent, sessionId, traceId, traceUrl, requestStatus, citations, limitations, onFollowUp }: Props) {
+  const structured = answerContent ?? null
+  const traceHref = requestStatus && requestStatus !== 'completed'
+    ? null
+    : resolveTraceHref(traceId, traceUrl)
+  const normalizedAnswer = answer ? normalizeAnswerMarkdown(answer) : ''
+  const blocks = !structured && answer ? parseAnswer(normalizedAnswer) : []
   const headings = blocks.filter((block) => block.kind === 'heading')
-  const isLong = (answer?.length ?? 0) > 900 || headings.length >= 4
+  const isLong = structured ? false : (answer?.length ?? 0) > 900 || headings.length >= 4
   const hasTabs = isLong && Boolean(answer)
-  const overviewIndex = isLong ? blocks.findIndex((block) => block.kind === 'paragraph') : -1
-  const overview = overviewIndex >= 0 ? blocks[overviewIndex] : undefined
+  const firstContentIndex = blocks.findIndex((block) => block.kind !== 'heading')
+  const overview = firstContentIndex >= 0 ? blocks[firstContentIndex] : undefined
+  const overviewMarkdown = overview?.kind === 'paragraph' ? overview.text : normalizedAnswer
   const headingText = headings.map((block) => block.text.toLowerCase()).join(' ')
   const followUps = [
     ...(headingText.includes('risk') ? ['Explain the risk findings discussed.'] : []),
@@ -295,62 +351,18 @@ export default function ResearchResponse({ answer, citations, limitations, onFol
     }
   }
 
-  const answerContent = answer ? (
-    <div className="answer-copy">
-      {blocks.map((block, index) => {
-        if (block.kind === 'heading') {
-          const content = renderInline(block.text, citations, onOpenCitation)
-          if (block.level === 1) return <h2 id={block.id} key={block.id}>{content}</h2>
-          if (block.level === 2) return <h3 id={block.id} key={block.id}>{content}</h3>
-          return <h4 id={block.id} key={block.id}>{content}</h4>
-        }
-        if (block.kind === 'paragraph') {
-          return <p key={`paragraph-${index}`}>{renderInline(block.text, citations, onOpenCitation)}</p>
-        }
-        if (block.kind === 'list') {
-          const List = block.ordered ? 'ol' : 'ul'
-          return (
-            <List key={`list-${index}`} start={block.ordered ? block.start : undefined}>
-              {block.items.map((item, itemIndex) => (
-                <li key={`list-item-${index}-${itemIndex}`}>{renderInline(item, citations, onOpenCitation)}</li>
-              ))}
-            </List>
-          )
-        }
-        if (block.kind === 'table') {
-          return (
-            <div className="response-table-scroll" key={`table-${index}`} role="region" aria-label="Research data table" tabIndex={0}>
-              <table className="response-table">
-                <thead>
-                  <tr>{block.headers.map((header, cellIndex) => <th key={cellIndex} scope="col" style={{ textAlign: block.alignments[cellIndex] }}>{renderInline(header, citations, onOpenCitation)}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {block.rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>
-                      {block.headers.map((_, cellIndex) => (
-                        <td key={cellIndex} style={{ textAlign: block.alignments[cellIndex] }}>
-                          {renderInline(row[cellIndex] ?? '', citations, onOpenCitation)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        }
-        if (block.kind === 'quote') return <blockquote key={`quote-${index}`}>{renderInline(block.text, citations, onOpenCitation)}</blockquote>
-        if (block.kind === 'code') {
-          return (
-            <details className="technical-details" key={`code-${index}`}>
-              <summary>View technical details</summary>
-              <pre><code>{block.content}</code></pre>
-            </details>
-          )
-        }
-        return <hr className="answer-rule" key={`rule-${index}`} />
-      })}
-    </div>
+  const markdownAnswer = (text: string, className = '') => (
+    <Suspense fallback={<div className="answer-copy" role="status">Preparing formatted answer…</div>}>
+    <MarkdownAnswerRenderer
+        text={text}
+        className={className}
+        renderText={(value) => renderInline(value, citations, onOpenCitation)}
+      />
+    </Suspense>
+  )
+
+  const legacyAnswerContent = answer && !structured ? (
+    markdownAnswer(answer)
   ) : null
 
   const evidenceContent = citations.length > 0 ? (
@@ -402,8 +414,68 @@ export default function ResearchResponse({ answer, citations, limitations, onFol
 
   return (
     <>
-      {!answer && citations.length === 0 && limitations.length === 0 && (
+      {!answer && !structured && citations.length === 0 && limitations.length === 0 && (
         <p className="response-empty">No written answer or supporting evidence was returned.</p>
+      )}
+      {structured && (
+        <div className="structured-answer">
+          <h2 className="structured-question">{structured.question}</h2>
+          <div className={`answer-status status-${structured.status}`}>
+            <span aria-hidden="true">●</span>
+            {structured.status === 'success' ? 'Research complete' : structured.status.replaceAll('_', ' ')}
+            <span className="confidence-label">Confidence: {structured.confidence}</span>
+            <TraceLink href={traceHref} />
+          </div>
+          <section className="executive-summary" aria-labelledby="structured-summary-title">
+            <span className="summary-mark" aria-hidden="true">✦</span>
+            <div className="executive-summary-content">
+              <span className="eyebrow" id="structured-summary-title">EXECUTIVE SUMMARY</span>
+              {markdownAnswer(structured.executive_summary)}
+            </div>
+          </section>
+          {structured.metrics.length > 0 && (
+            <section className="structured-section" aria-labelledby="structured-metrics-title">
+              <h3 id="structured-metrics-title">Key metrics</h3>
+              <div className="structured-metric-grid">
+                {structured.metrics.map((metric, index) => (
+                  <article className="structured-metric-card" key={`${metric.name}-${index}`}>
+                    <span>{metric.name}</span>
+                    <strong>{metric.value}{metric.unit ? ` ${metric.unit}` : ''}</strong>
+                    {(metric.period || metric.description) && <small>{[metric.period, metric.description].filter(Boolean).join(' · ')}</small>}
+                    {metric.citation_indices.map((citationIndex) => citations[citationIndex] && (
+                      <button className="inline-evidence-link" type="button" key={citationIndex} onClick={() => onOpenCitation(citationIndex)}>
+                        View supporting citation · {citations[citationIndex].source_title || `Source ${citationIndex + 1}`}
+                      </button>
+                    ))}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {structured.answer && <section className="structured-section"><h3>Detailed answer</h3>{markdownAnswer(structured.answer)}</section>}
+          {structured.key_findings.length > 0 && (
+            <section className="structured-section" aria-labelledby="structured-findings-title">
+              <h3 id="structured-findings-title">Key findings</h3>
+              <div className="finding-list">
+                {structured.key_findings.map((finding, index) => (
+                  <article className="finding-card" key={`${finding.title}-${index}`}>
+                    <span className={`importance importance-${finding.importance}`}>{finding.importance}</span>
+                    <h4>{finding.title}</h4><p>{finding.description}</p>
+                    {finding.citation_indices.filter((citationIndex) => citations[citationIndex]).map((citationIndex) => {
+                      const citation = citations[citationIndex]
+                      return <details className="finding-evidence" key={citationIndex}>
+                        <summary>View supporting citation</summary>
+                        <strong>{citation.source_title || `Source ${citationIndex + 1}`}{citation.page_number ? ` · Page ${citation.page_number}` : ''}</strong>
+                        {citation.excerpt && <blockquote>{citation.excerpt}</blockquote>}
+                      </details>
+                    })}
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {structured.risks_and_considerations.length > 0 && <section className="structured-section"><h3>Risks and considerations</h3><div className="finding-list">{structured.risks_and_considerations.map((risk, index) => <article className="finding-card" key={`${risk.title}-${index}`}><span className={`importance importance-${risk.severity}`}>{risk.severity}</span><h4>{risk.title}</h4><p>{risk.description}</p>{risk.citation_indices.filter((citationIndex) => citations[citationIndex]).map((citationIndex) => <button className="inline-evidence-link" type="button" key={citationIndex} onClick={() => onOpenCitation(citationIndex)}>View supporting citation · {citations[citationIndex].source_title || `Source ${citationIndex + 1}`}</button>)}</article>)}</div></section>}
+        </div>
       )}
       {hasTabs ? (
         <section className="research-briefing">
@@ -418,12 +490,16 @@ export default function ResearchResponse({ answer, citations, limitations, onFol
           </div>
           <div className="response-tab-panel" aria-live="polite">
             {activeTab === 'overview' && (
-              overview?.kind === 'paragraph' ? (
+              overview ? (
                 <section className="executive-summary" aria-label="Response overview">
                   <span className="summary-mark" aria-hidden="true">✦</span>
                   <div>
-                    <span className="eyebrow">RESPONSE OVERVIEW</span>
-                    <p>{renderInline(overview.text, citations, onOpenCitation)}</p>
+                    <div className="overview-header">
+                      <span className="eyebrow">RESPONSE OVERVIEW</span>
+                      {sessionId && <span className="trace-session-meta">Session {sessionId}</span>}
+                      <TraceLink href={traceHref} />
+                    </div>
+                    {markdownAnswer(overviewMarkdown)}
                   </div>
                 </section>
               ) : (
@@ -447,7 +523,7 @@ export default function ResearchResponse({ answer, citations, limitations, onFol
                     </nav>
                   </details>
                 )}
-                {answerContent}
+                {legacyAnswerContent}
               </>
             )}
             {activeTab === 'evidence'
@@ -457,7 +533,7 @@ export default function ResearchResponse({ answer, citations, limitations, onFol
         </section>
       ) : (
         <>
-          {answerContent}
+          {legacyAnswerContent}
           {evidenceContent}
         </>
       )}

@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import ResearchResponse, { type Citation } from './ResearchResponse'
+import ResearchResponse, { type AnswerContent, type Citation } from './ResearchResponse'
 import './App.css'
 import './WorkspaceTheme.css'
 
 type Portfolio = { portfolio_id: number; portfolio_name: string; portfolio_manager?: string | null; risk_category?: string | null; total_value?: number | string | null; benchmark_index?: string | null }
 type PortfolioDetail = Portfolio & { holdings: { holding_id: number; asset_name?: string | null; asset_type?: string | null; sector?: string | null; allocation_percentage?: number | string | null; market_value?: number | string | null; last_updated?: string | null }[]; risk_assessments: { risk_id: number; asset_name?: string | null; risk_type?: string | null; risk_score?: number | null; risk_level?: string | null; risk_description?: string | null; assessment_date?: string | null; escalation_flag: boolean }[] }
-type QueryResult = { query_id: string; status: string; answer?: string | null; citations?: Citation[] | null; limitations?: string[] | null; clarification_question?: string | null; escalation_id?: string | null; escalation_reason?: string | null; escalation_data_gaps?: string[] | null; failure?: { code: string; message: string; retryable: boolean } | null }
+type QueryResult = { query_id: string; status: string; answer?: string | null; answer_content?: AnswerContent | null; session_id?: string | null; trace_id?: string | null; trace_url?: string | null; citations?: Citation[] | null; limitations?: string[] | null; clarification_question?: string | null; escalation_id?: string | null; escalation_reason?: string | null; escalation_data_gaps?: string[] | null; failure?: { code: string; message: string; retryable: boolean } | null }
 type Escalation = { escalation_id: string; query_id: string; status: string; reason: string; created_at: string }
-type EscalationDetail = Escalation & { question: string; requested_review: string; evidence: Citation[]; attempted_steps: string[]; data_gaps: string[]; answer?: string | null; limitations: string[]; reviewer_notes?: string | null; outcome?: string | null }
+type EscalationDetail = Escalation & { question: string; requested_review: string; evidence: Citation[]; attempted_steps: string[]; data_gaps: string[]; review_context?: Record<string, unknown>; answer?: string | null; limitations: string[]; reviewer_notes?: string | null; outcome?: string | null }
 type View = 'overview' | 'research' | 'portfolios' | 'escalations' | 'ingestion'
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
+const queryPollIntervalMs = 1500
+const queryPollMaxAttempts = 180
 const formatReportedNumber = (value?: number | string | null) => {
   if (value == null) return '—'
   const raw = String(value).trim()
@@ -47,6 +49,11 @@ const reviewStatusCopy: Record<string, { label: string; style: string }> = {
 }
 
 function App() {
+  const { user } = useAuth0()
+  return <AppContent key={user?.sub ?? 'anonymous'} sessionOwner={user?.sub ?? 'user'} />
+}
+
+function AppContent({ sessionOwner }: { sessionOwner: string }) {
   const { isLoading, isAuthenticated, error: authError, loginWithRedirect, logout, getAccessTokenSilently, user } = useAuth0()
   const [view, setView] = useState<View>('overview')
   const [navOpen, setNavOpen] = useState(false)
@@ -58,7 +65,15 @@ function App() {
   const [busy, setBusy] = useState(false)
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'degraded' | 'offline'>('checking')
   const [error, setError] = useState('')
-  const [sessionId, setSessionId] = useState('')
+  const [sessionId, setSessionId] = useState(() => {
+    const storageKey = `friis-session:${sessionOwner}`
+    let id = sessionStorage.getItem(storageKey)
+    if (!id) {
+      id = crypto.randomUUID()
+      sessionStorage.setItem(storageKey, id)
+    }
+    return id
+  })
   const [escalations, setEscalations] = useState<Escalation[]>([])
   const [activeEscalation, setActiveEscalation] = useState<EscalationDetail | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
@@ -76,12 +91,10 @@ function App() {
     let response: Response
     try {
       response = await fetch(`${apiBase}${path}`, { ...init, headers })
-      setApiStatus('connected')
     } catch (cause) {
-      setApiStatus('offline')
       if (cause instanceof TypeError) {
         const destination = apiBase || 'the local API at http://127.0.0.1:8000 (through the Vite proxy)'
-        throw new Error(`Cannot reach ${destination}. Start the FRIIS backend and check its database connection, then retry.`)
+        throw new Error(`Cannot reach ${destination}. Start the FRIIS backend and check its database connection, then retry.`, { cause })
       }
       throw cause
     }
@@ -96,17 +109,19 @@ function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return
-    const storageKey = `friis-session:${user?.sub ?? 'user'}`
-    let id = sessionStorage.getItem(storageKey)
-    if (!id) { id = crypto.randomUUID(); sessionStorage.setItem(storageKey, id) }
-    setSessionId(id)
-    api<{ items: Portfolio[] }>('/api/v1/portfolios?limit=100').then((data) => setPortfolios(data.items)).catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load portfolios.'))
-  }, [api, isAuthenticated, user?.sub])
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      api<{ items: Portfolio[] }>('/api/v1/portfolios?limit=100')
+        .then((data) => { if (!cancelled) setPortfolios(data.items) })
+        .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load portfolios.') })
+    })
+    return () => { cancelled = true }
+  }, [api, isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated) return
     let cancelled = false
-    setApiStatus('checking')
     fetch(`${apiBase}/health`)
       .then(async (response) => {
         const health = await response.json() as { status?: string }
@@ -122,17 +137,25 @@ function App() {
   }, [api])
 
   useEffect(() => {
-    if (view === 'escalations') loadEscalations().catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not load escalations.'))
-  }, [view, loadEscalations])
+    if (view !== 'escalations') return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      api<{ items: Escalation[] }>('/api/v1/escalations?limit=50')
+        .then((data) => { if (!cancelled) setEscalations(data.items) })
+        .catch((e: unknown) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load escalations.') })
+    })
+    return () => { cancelled = true }
+  }, [api, view])
 
   const selectView = (next: View) => { setView(next); setNavOpen(false); setError(''); setNotice(''); if (next !== 'portfolios') setPortfolioDetail(null) }
 
   const pollQuery = async (queryId: string) => {
-    for (let attempt = 0; attempt < 140; attempt += 1) {
+    for (let attempt = 0; attempt < queryPollMaxAttempts; attempt += 1) {
       const data = await api<QueryResult>(`/api/v1/queries/${encodeURIComponent(queryId)}`)
       setResult(data)
       if (!['queued', 'processing'].includes(data.status)) return
-      await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      await new Promise((resolve) => window.setTimeout(resolve, queryPollIntervalMs))
     }
     throw new Error('This research request is taking longer than expected. You can check it again shortly.')
   }
@@ -177,7 +200,25 @@ function App() {
   const openPortfolio = async (id: number) => { setError(''); setBusy(true); try { setPortfolioDetail(await api<PortfolioDetail>(`/api/v1/portfolios/${id}`)) } catch (e) { setError(e instanceof Error ? e.message : 'Could not load this portfolio.') } finally { setBusy(false) } }
   const openEscalation = async (id: string) => { setError(''); try { const detail = await api<EscalationDetail>(`/api/v1/escalations/${encodeURIComponent(id)}`); setActiveEscalation(detail); setReviewNotes(detail.reviewer_notes ?? ''); setReviewStatus(detail.status); setReviewOutcome(detail.outcome ?? '') } catch (e) { setError(e instanceof Error ? e.message : 'Could not open escalation.') } }
   const saveReview = async (event: FormEvent) => { event.preventDefault(); if (!activeEscalation) return; setBusy(true); setError(''); try { const updated = await api<EscalationDetail>(`/api/v1/escalations/${encodeURIComponent(activeEscalation.escalation_id)}`, { method: 'PATCH', body: JSON.stringify({ status: reviewStatus, outcome: reviewOutcome || undefined, reviewer_notes: reviewNotes || undefined }) }); setActiveEscalation(updated); await loadEscalations(); setNotice('Escalation review saved.') } catch (e) { setError(e instanceof Error ? e.message : 'Could not save review.') } finally { setBusy(false) } }
-  const uploadDocument = async (event: FormEvent) => { event.preventDefault(); if (!uploadFile) return; setBusy(true); setError(''); setUploadResult(null); const body = new FormData(); body.append('file', uploadFile); try { setUploadResult(await api<Record<string, unknown>>('/api/v1/admin/ingestions', { method: 'POST', body })); setNotice('Document processed and added to the knowledge collection.') } catch (e) { setError(e instanceof Error ? e.message : 'Document upload failed.') } finally { setBusy(false) } }
+  const uploadDocument = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!uploadFile) return
+
+    setBusy(true)
+    setError('')
+    setNotice('')
+    setUploadResult(null)
+    const body = new FormData()
+    body.append('file', uploadFile)
+    try {
+      setUploadResult(await api<Record<string, unknown>>('/api/v1/admin/ingestions', { method: 'POST', body }))
+      setNotice('Document processed and added to the knowledge collection.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Document upload failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (isLoading) return <main className="auth-loading"><div className="brand-mark">F</div><p>Preparing your workspace…</p></main>
   if (!isAuthenticated) return <main className="login-shell"><section className="login-art"><div className="brand-lockup"><span className="brand-mark">F</span><span>FRIIS<span className="brand-sub">INTELLIGENCE</span></span></div><div className="login-message"><span className="eyebrow">FINANCE RISK &amp; INVESTMENT INTELLIGENCE</span><h1>Clarity for<br />every decision.</h1><p>Research portfolios, trace evidence, and surface risk with an AI workspace built for financial teams.</p><div className="login-proof"><span>01 / Evidence-led research</span><span>02 / Portfolio-aware analysis</span><span>03 / Human review built in</span></div></div><span className="art-foot">DECISION INTELLIGENCE · 2026</span></section><section className="login-panel"><div className="login-panel-inner"><span className="eyebrow">YOUR RESEARCH WORKSPACE</span><h2>Welcome to FRIIS</h2><p>Sign in to continue to your secure intelligence workspace.</p>{authError && <div className="alert error" role="alert">{authError.message}</div>}<button className="button primary full" onClick={() => loginWithRedirect()}>Sign in securely <span>↗</span></button><button className="button secondary full" onClick={() => loginWithRedirect({ authorizationParams: { screen_hint: 'signup' } })}>Create an account</button><div className="secure-note"><span>◈</span> Protected with Auth0 · Your data stays scoped to your access</div></div><span className="login-legal">For professional research support. Not investment advice.</span></section></main>
@@ -354,6 +395,11 @@ function App() {
                   {(result.answer || responseCitations.length > 0 || responseLimitations.length > 0 || result.status === 'completed') && (
                     <ResearchResponse
                       answer={result.answer}
+                      answerContent={result.answer_content}
+                      sessionId={result.session_id}
+                      traceId={result.trace_id}
+                      traceUrl={result.trace_url}
+                      requestStatus={result.status}
                       citations={responseCitations}
                       limitations={responseLimitations}
                       onFollowUp={(prompt) => {
@@ -596,6 +642,25 @@ function App() {
                   <div className="review-block">
                     <span className="eyebrow">INFORMATION GAPS</span>
                     <ul>{activeEscalation.data_gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul>
+                  </div>
+                )}
+                {activeEscalation.evidence.length > 0 && (
+                  <div className="review-block">
+                    <span className="eyebrow">RETRIEVED EVIDENCE</span>
+                    {activeEscalation.evidence.map((item, index) => (
+                      <p key={`${item.source_id}-${index}`}><strong>{item.source_title}</strong>{item.page_number ? ` · Page ${item.page_number}` : ''}<br />{item.excerpt}</p>
+                    ))}
+                  </div>
+                )}
+                {activeEscalation.review_context && Object.keys(activeEscalation.review_context).length > 0 && (
+                  <div className="review-block">
+                    <span className="eyebrow">VALIDATION AND CORRECTION DETAILS</span>
+                    {Object.entries(activeEscalation.review_context).map(([key, value]) => (
+                      <div key={key} className="review-context-item">
+                        <strong>{key.replaceAll('_', ' ')}</strong>
+                        <pre>{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <form onSubmit={saveReview} className="review-form">

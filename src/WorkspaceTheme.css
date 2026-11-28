@@ -498,12 +498,12 @@ select:focus-visible {
   }
 
   .sidebar .brand-lockup > span:last-child {
-    font-size: 16px;
+    font-size: 31px;
   }
 
   .sidebar .workspace-label {
     display: block;
-    font-size: 9px;
+    font-size: 24px;
   }
 
   .sidebar .nav-item,
@@ -511,11 +511,11 @@ select:focus-visible {
   .sidebar .nav-item.active {
     justify-content: flex-start;
     padding: 11px 12px;
-    font-size: 13px;
+    font-size: 28px;
   }
 
   .sidebar .nav-icon {
-    font-size: 17px;
+    font-size: 32px;
   }
 
   .sidebar .status-card {
@@ -546,7 +546,7 @@ select:focus-visible {
     border: 1px solid #ffffff30;
     border-radius: 6px;
     color: #e5edf3;
-    font-size: 20px;
+    font-size: 35px;
   }
 
   .sidebar-close:hover {
@@ -580,7 +580,7 @@ select:focus-visible {
     border-radius: 7px;
     background: #fff;
     color: #294f6e;
-    font-size: 16px;
+    font-size: 31px;
   }
 
   .topbar {
